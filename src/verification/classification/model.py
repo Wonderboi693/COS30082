@@ -1,49 +1,78 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torchvision.models as models
+from torch import nn
+from torch.nn import functional as F
+from torchvision import models
+
 from src.config import Config
 
-class ClassificationFaceNet(nn.Module):
-    def __init__(self, num_classes: int, embedding_dim: int = Config.EMBEDDING_DIM):
+ARCHITECTURES = ("resnet18", "resnet50", "mobilenet_v3_small")
+
+
+class EmbeddingNetwork(nn.Module):
+    """Classifier-free network; returns raw penultimate features by default."""
+    def __init__(self, features, embedding, normalize=False):
         super().__init__()
-        
-        # Backbone adapted for small 64x64 faces
-        base = models.resnet18(weights=None)
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = base.bn1
-        self.relu = base.relu
+        self.features = features
+        self.embedding = embedding
+        self.normalize = normalize
 
-        self.layer1 = base.layer1  # 64 channels,  64x64
-        self.layer2 = base.layer2  # 128 channels, 32x32
-        self.layer3 = base.layer3  # 256 channels, 16x16
-        self.layer4 = base.layer4  # 512 channels, 8x8
+    def forward(self, images):
+        embeddings = self.embedding(self.features(images).flatten(1))
+        return F.normalize(embeddings, p=2, dim=1) if self.normalize else embeddings
 
-        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
 
-        # Penultimate feature embedding layer
-        self.fc_embedding = nn.Linear(512, embedding_dim, bias=False)
-        self.bn_embedding = nn.BatchNorm1d(embedding_dim)
-
-        # Softmax classification head
+class ClassificationFaceNet(nn.Module):
+    def __init__(self, num_classes, embedding_dim=Config.EMBEDDING_DIM, architecture=Config.ARCHITECTURE, pretrained=True):
+        super().__init__()
+        if num_classes < 2 or embedding_dim < 2:
+            raise ValueError("num_classes and embedding_dim must be >= 2")
+        if architecture not in ARCHITECTURES:
+            raise ValueError(f"architecture must be one of {ARCHITECTURES}")
+        weights = None
+        if architecture.startswith("resnet"):
+            if pretrained:
+                weights = (models.ResNet50_Weights.DEFAULT if architecture == "resnet50"
+                           else models.ResNet18_Weights.DEFAULT)
+            backbone = getattr(models, architecture)(weights=weights)
+            feature_dim = backbone.fc.in_features
+            self.features = nn.Sequential(*list(backbone.children())[:-1])
+        else:
+            if pretrained:
+                weights = models.MobileNet_V3_Small_Weights.DEFAULT
+            backbone = models.mobilenet_v3_small(weights=weights)
+            feature_dim = backbone.classifier[0].in_features
+            self.features = nn.Sequential(backbone.features, backbone.avgpool)
+        self.embedding = nn.Sequential(nn.Linear(feature_dim, embedding_dim), nn.ReLU())
+        self.dropout = nn.Dropout(p=0.2)
         self.classifier = nn.Linear(embedding_dim, num_classes)
+        self.config = {"num_classes": num_classes, "embedding_dim": embedding_dim,
+                       "architecture": architecture}
 
-    def extract_embedding(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Extracts L2-normalized feature representation from the penultimate layer.
-        """
-        x = self.relu(self.bn1(self.conv1(x)))
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
-        x = self.global_pool(x)
-        x = torch.flatten(x, 1)
+    def forward_embeddings(self, images, normalize=False):
+        embeddings = self.embedding(self.features(images).flatten(1))
+        return F.normalize(embeddings, p=2, dim=1) if normalize else embeddings
 
-        embedding = self.bn_embedding(self.fc_embedding(x))
-        return F.normalize(embedding, p=2, dim=1)
+    def extract_embedding(self, images):
+        """Return normalized penultimate features for face comparison."""
+        return self.forward_embeddings(images, normalize=True)
 
-    def forward(self, x: torch.Tensor):
-        embedding = self.extract_embedding(x)
-        logits = self.classifier(embedding)
-        return logits, embedding
+    def forward(self, images):
+        # Classify raw features; normalize the returned verification embedding.
+        embedding = self.forward_embeddings(images)
+        logits = self.classifier(self.dropout(embedding))
+        return logits, F.normalize(embedding, p=2, dim=1)
+
+    def without_classifier(self, normalize=False):
+        return EmbeddingNetwork(self.features, self.embedding, normalize)
+
+
+def resolve_device(name="auto"):
+    if name == "auto":
+        name = "cuda" if torch.cuda.is_available() else (
+            "mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device(name)
+    if device.type == "cuda" and not torch.cuda.is_available():
+        raise ValueError("CUDA is unavailable. Install CUDA-enabled PyTorch on the NVIDIA PC.")
+    if device.type == "mps" and not torch.backends.mps.is_available():
+        raise ValueError("Apple MPS is unavailable; use --device cpu")
+    return device
