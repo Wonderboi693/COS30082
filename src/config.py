@@ -41,3 +41,19 @@ class Config:
 
     # Compute device
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # ----------------------------------------------------
+    # Anti-Spoofing / Liveness Detection (User Story 2.1)
+    # ----------------------------------------------------
+    ANTISPOOF_DIR = os.path.expanduser(
+        os.environ.get(
+            "COS30082_ANTISPOOF_DIR",
+            os.path.join(PROJECT_ROOT, "data", "raw", "anti-spoofing_data")
+        )
+    )
+    ANTISPOOF_CHECKPOINT = os.path.join(CHECKPOINT_DIR, "best_antispoof.pt")
+    
+    LIVENESS_THRESHOLD = 0.65
+    ANTISPOOF_BATCH_SIZE = 32
+    ANTISPOOF_EPOCHS = 20
+    ANTISPOOF_LR = 1e-4

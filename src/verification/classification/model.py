@@ -10,7 +10,7 @@ ARCHITECTURES = ("resnet18", "resnet50", "mobilenet_v3_small")
 
 class EmbeddingNetwork(nn.Module):
     """Classifier-free network; returns normalized or raw penultimate features."""
-    def __init__(self, features, embedding, normalize=True):
+    def __init__(self, features: nn.Module, embedding: nn.Module, normalize: bool = True):
         super().__init__()
         self.features = features
         self.embedding = embedding

@@ -17,7 +17,7 @@ class FaceEmbeddingExtractor:
         path = Path(checkpoint_path if checkpoint_path is not None else Path(Config.CHECKPOINT_DIR) / "best.pt").expanduser()
 
         if path.is_dir():
-            path = next((path / name for name in ("embeddings.pt", "best.pt") if (path / name).is_file()), path / "embeddings.pt")
+            path = next((path / name for name in ("best_metric.pth", "embeddings.pt", "best.pt") if (path / name).is_file()), path / "best.pt")
 
         if not path.is_file():
             # Check fallback to best_supervised.pth
@@ -30,14 +30,19 @@ class FaceEmbeddingExtractor:
         self.checkpoint_path = path.resolve()
         checkpoint = torch.load(self.checkpoint_path, map_location="cpu")
 
-        # Resolve model parameters and preprocessing
-        self.model_config = checkpoint.get("model_config", {
-            "num_classes": checkpoint.get("num_classes", 4000),
-            "embedding_dim": checkpoint.get("embedding_dim", Config.EMBEDDING_DIM),
-            "architecture": "resnet18"
-        })
+        # Extract config with safe defaults
+        raw_config = checkpoint.get("model_config", {})
+        self.num_classes = raw_config.get("num_classes", checkpoint.get("num_classes", 2))
+        self.embedding_dim = raw_config.get("embedding_dim", checkpoint.get("embedding_dim", Config.EMBEDDING_DIM))
+        self.architecture = raw_config.get("architecture", getattr(Config, "ARCHITECTURE", "resnet18"))
+
+        self.model_config = {
+            "num_classes": self.num_classes,
+            "embedding_dim": self.embedding_dim,
+            "architecture": self.architecture
+        }
+
         self.image_size = checkpoint.get("image_size", Config.IMAGE_SIZE[0])
-        self.embedding_dim = self.model_config.get("embedding_dim", Config.EMBEDDING_DIM)
         self.normalize = normalize
 
         settings = checkpoint.get("preprocessing", get_preprocessing_config(self.image_size))
@@ -47,12 +52,18 @@ class FaceEmbeddingExtractor:
             "std": list(settings.get("std", [0.5, 0.5, 0.5]))
         }
 
-        classifier = ClassificationFaceNet(**self.model_config, pretrained=False)
+        classifier = ClassificationFaceNet(
+            num_classes=self.num_classes,
+            embedding_dim=self.embedding_dim,
+            architecture=self.architecture,
+            pretrained=False
+        )
+        
         state_dict = checkpoint.get("model_state", checkpoint.get("model_state_dict"))
 
-        if checkpoint.get("kind") == "embeddings":
+        if checkpoint.get("kind") == "embeddings" or "classifier.weight" not in state_dict:
             self.model = classifier.without_classifier(normalize=normalize)
-            self.model.load_state_dict(state_dict)
+            self.model.load_state_dict(state_dict, strict=False)
         else:
             classifier.load_state_dict(state_dict, strict=False)
             self.model = classifier.without_classifier(normalize=normalize)
