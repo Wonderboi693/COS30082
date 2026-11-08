@@ -57,3 +57,28 @@ class Config:
     ANTISPOOF_BATCH_SIZE = 32
     ANTISPOOF_EPOCHS = 20
     ANTISPOOF_LR = 1e-4
+
+    # ----------------------------------------------------
+    # Emotion Recognition Module
+    # ----------------------------------------------------
+    EMOTION_DIR = os.path.expanduser(
+        os.environ.get(
+            "COS30082_EMOTION_DIR",
+            os.path.join(PROJECT_ROOT, "data", "raw", "emotion_data")
+        )
+    )
+    EMOTION_CHECKPOINT = os.path.join(CHECKPOINT_DIR, "best_emotion.pt")
+    
+    EMOTION_CLASSES = [
+        "Angry",
+        "Disgust",
+        "Fear",
+        "Happy",
+        "Neutral",
+        "Sad",
+        "Surprise"
+    ]
+    NUM_EMOTIONS = len(EMOTION_CLASSES)
+    EMOTION_BATCH_SIZE = 64
+    EMOTION_EPOCHS = 25
+    EMOTION_LR = 3e-4
