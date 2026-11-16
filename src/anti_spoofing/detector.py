@@ -48,9 +48,9 @@ class LivenessDetector:
                 img = opened.convert("RGB")
         elif isinstance(image_input, np.ndarray):
             # Convert BGR (OpenCV) to RGB
-            if img_input.ndim == 3 and img_input.shape[2] == 3:
-                img_input = img_input[..., ::-1]
-            img = Image.fromarray(img_input)
+            if image_input.ndim == 3 and image_input.shape[2] == 3:
+                image_input = image_input[..., ::-1]
+            img = Image.fromarray(image_input)
         elif isinstance(image_input, Image.Image):
             img = image_input.convert("RGB")
         else:
