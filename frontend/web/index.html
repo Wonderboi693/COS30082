@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Face Attendance</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">Face Attendance <span class="muted">COS30082</span></div>
+  <div id="status" class="status">Connecting…</div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab active" data-tab="live">Live check-in</button>
+  <button class="tab" data-tab="enroll">Enroll</button>
+  <button class="tab" data-tab="verify">Verify 1:1</button>
+  <button class="tab" data-tab="people">People</button>
+  <button class="tab" data-tab="log">Attendance</button>
+  <button class="tab" data-tab="models">Models</button>
+</nav>
+
+<main>
+  <!-- LIVE -->
+  <section id="tab-live" class="panel active">
+    <div class="grid">
+      <div class="stage">
+        <video id="liveVideo" autoplay playsinline muted></video>
+        <canvas id="liveOverlay"></canvas>
+        <div id="livePlaceholder" class="placeholder">Camera is off</div>
+      </div>
+      <aside class="side">
+        <div class="row">
+          <button id="liveStart" class="primary">Start camera</button>
+          <button id="liveStop" disabled>Stop</button>
+        </div>
+        <label class="check"><input type="checkbox" id="liveLog" checked> Log attendance</label>
+        <div class="field">
+          <label for="modelSelect">Recognition model</label>
+          <select id="modelSelect"></select>
+        </div>
+        <div class="field">
+          <label for="threshold">Match threshold (cosine) <b id="thresholdVal">–</b></label>
+          <input type="range" id="threshold" min="0" max="0.9" step="0.01">
+          <small class="muted">Default = the model's validation EER threshold.</small>
+        </div>
+        <label class="check"><input type="checkbox" id="toggleLiveness"> Liveness check (anti-spoofing)</label>
+        <label class="check"><input type="checkbox" id="toggleEmotion"> Emotion recognition</label>
+        <h3>Detected</h3>
+        <ul id="liveResults" class="results"><li class="muted">Nothing yet</li></ul>
+        <small id="liveLatency" class="muted"></small>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ENROLL -->
+  <section id="tab-enroll" class="panel">
+    <div class="grid">
+      <div class="stage">
+        <video id="enrollVideo" autoplay playsinline muted></video>
+        <div id="enrollPlaceholder" class="placeholder">Camera is off</div>
+      </div>
+      <aside class="side">
+        <div class="field"><label for="enrollName">Full name</label><input id="enrollName" placeholder="e.g. Nguyen Van A"></div>
+        <div class="field"><label for="enrollId">ID (optional)</label><input id="enrollId" placeholder="e.g. 104123456"></div>
+        <div class="row">
+          <button id="enrollCam">Start camera</button>
+          <button id="enrollSnap" disabled>Capture (0)</button>
+        </div>
+        <div class="field"><label for="enrollFiles">…or upload photos</label><input type="file" id="enrollFiles" accept="image/*" multiple></div>
+        <div id="enrollThumbs" class="thumbs"></div>
+        <div class="row">
+          <button id="enrollSubmit" class="primary">Enroll</button>
+          <button id="enrollClear">Clear</button>
+        </div>
+        <small class="muted">Use 3–5 photos with slightly different angles. Photos are kept, so switching the model later re-uses them.</small>
+        <div id="enrollMsg" class="msg"></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- VERIFY -->
+  <section id="tab-verify" class="panel">
+    <div class="pair">
+      <label class="drop"><input type="file" id="verifyA" accept="image/*"><img id="verifyAImg" alt=""><span>Image A</span></label>
+      <label class="drop"><input type="file" id="verifyB" accept="image/*"><img id="verifyBImg" alt=""><span>Image B</span></label>
+    </div>
+    <div class="row center"><button id="verifyBtn" class="primary">Compare</button></div>
+    <div id="verifyMsg" class="msg center"></div>
+  </section>
+
+  <!-- PEOPLE -->
+  <section id="tab-people" class="panel">
+    <div class="row"><button id="peopleRefresh">Refresh</button></div>
+    <div id="peopleList" class="cards"></div>
+  </section>
+
+  <!-- LOG -->
+  <section id="tab-log" class="panel">
+    <div class="row">
+      <input type="date" id="logDate">
+      <button id="logRefresh">Load</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Time</th><th>Name</th><th>ID</th><th>Model</th><th>Similarity</th><th>Liveness</th><th>Emotion</th></tr></thead>
+        <tbody id="logBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- MODELS -->
+  <section id="tab-models" class="panel">
+    <p class="muted">Validation AUC and thresholds: cosine similarity on <code>verification_pairs_val.txt</code> (8,805 pairs).</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Model</th><th>Owner</th><th>Checkpoint</th><th>Val AUC</th><th>Threshold</th><th>Status</th></tr></thead>
+        <tbody id="modelsBody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
