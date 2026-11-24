@@ -1,0 +1,12 @@
+# Web app (src/api + frontend/web) and packages the existing code imports
+# but requirements.txt does not list yet.
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+opencv-python>=4.8
+scikit-learn>=1.3
+tqdm>=4.66
+matplotlib>=3.8
+psutil>=5.9
+pytest>=8
+httpx>=0.27
