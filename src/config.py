@@ -82,3 +82,25 @@ class Config:
     EMOTION_BATCH_SIZE = 64
     EMOTION_EPOCHS = 25
     EMOTION_LR = 3e-4
+
+    # ----------------------------------------------------
+    # Classification Embeddings: Softmax baseline + ArcFace 
+    # ----------------------------------------------------
+    ARCFACE_IMAGE_SIZE = 112          # 64x64 crops upsampled for the ImageNet-initialised ResNet18
+    ARCFACE_EMBEDDING_DIM = 512
+    ARCFACE_MEAN = (0.485, 0.456, 0.406)
+    ARCFACE_STD = (0.229, 0.224, 0.225)
+    ARCFACE_RUN_DIR = os.path.join(CHECKPOINT_DIR, "arcface_runs")   # per-run history + resume state
+    SOFTMAX_CHECKPOINT = os.path.join(CHECKPOINT_DIR, "best_softmax.pt")
+    ARCFACE_CHECKPOINT = os.path.join(CHECKPOINT_DIR, "best_arcface.pt")
+
+    ARCFACE_BATCH_SIZE = 128
+    ARCFACE_LR = 0.1                  # neck + head; backbone uses lr * 0.1
+    SOFTMAX_EPOCHS = 40
+    ARCFACE_EPOCHS = 60
+    ARCFACE_SCALE = 32.0
+    ARCFACE_MARGIN = 0.35
+
+    # Cosine thresholds at the EER point on verification_pairs_val.txt
+    SOFTMAX_THRESHOLD = 0.2007        # val AUC 0.8994
+    ARCFACE_THRESHOLD = 0.2391        # val AUC 0.8729
