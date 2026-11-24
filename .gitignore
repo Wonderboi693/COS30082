@@ -1,77 +1,18 @@
-# Byte-compiled / optimized / DLL files
+﻿# Python & Virtual Environment
+.venv/
+venv/
 __pycache__/
 *.py[cod]
 *$py.class
 
-# C extensions
-*.so
+# Datasets & Model Checkpoints (too large for Git)
+data/*
+!data/placeholder.txt
+checkpoints/*.pt
+checkpoints/*.pth
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual environments
-.venv/
-venv/
-ENV/
-env/
-env.bak/
-venv.bak/
-
-# Datasets & raw images (Keep directory structure via .gitkeep/placeholder.txt, ignore contents)
-data/raw/
-data/raw/*
-!data/raw/placeholder.txt
-data/gallery/enrolled_faces/*
-!data/gallery/enrolled_faces/.gitkeep
-data/gallery/*.json
-
-# Model weights & training checkpoints
-checkpoints/
-*.pth
-*.pt
-*.ckpt
-*.onnx
-*.engine
-*.tflite
-
-# Training & evaluation outputs
-outputs/attendance_logs/*.csv
-outputs/evaluation_results/*.png
-outputs/evaluation_results/*.csv
-outputs/evaluation_results/*.json
-
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints
-*/.ipynb_checkpoints/*
-
-# IDEs, text editors, & tooling
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# macOS & Windows OS metadata
 .DS_Store
+._*
 Thumbs.db
-
-# Logs & profiler outputs
-*.log
-runs/
-wandb/
-lightning_logs/
+desktop.ini

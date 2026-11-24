@@ -11,7 +11,12 @@ class EmotionNet(nn.Module):
     Multi-Class Facial Expression Classifier (7 Basic Emotions).
     Optimized for low-latency inference (< 30ms requirement).
     """
-    def __init__(self, num_classes: int = Config.NUM_EMOTIONS, pretrained_backbone: bool = False):
+    def __init__(
+        self,
+        num_classes: int = Config.NUM_EMOTIONS,
+        pretrained_backbone: bool = False,
+        freeze_backbone: bool = False,
+    ):
         super().__init__()
         base = models.resnet18(weights=models.ResNet18_Weights.DEFAULT if pretrained_backbone else None)
 
@@ -34,6 +39,17 @@ class EmotionNet(nn.Module):
             nn.Dropout(p=0.4),
             nn.Linear(128, num_classes)
         )
+
+        if freeze_backbone:
+            self.freeze_backbone()
+
+    def freeze_backbone(self):
+        for param in self.features.parameters():
+            param.requires_grad = False
+
+    def unfreeze_backbone(self):
+        for param in self.features.parameters():
+            param.requires_grad = True
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.features(x)

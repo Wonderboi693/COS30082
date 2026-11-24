@@ -33,7 +33,7 @@ class Config:
 
     # Training hyperparameters
     BATCH_SIZE = 128
-    NUM_WORKERS = 4
+    NUM_WORKERS = 0
     EPOCHS = 25
     LEARNING_RATE = 1e-3
     BACKBONE_LEARNING_RATE = 1e-4
