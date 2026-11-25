@@ -1,0 +1,180 @@
+{
+  "status": "finished",
+  "tag": "smoke",
+  "hyperparameters": {
+    "lr": 0.0003,
+    "batch_size": 64,
+    "head_epochs": 1,
+    "full_epochs": 1,
+    "pretrained": true,
+    "tag": "smoke",
+    "save_path": "checkpoints/smoke.pt",
+    "results_dir": null,
+    "seed": 42,
+    "no_amp": true,
+    "max_batches": 5
+  },
+  "base_lr": 0.0003,
+  "pretrained_lr": 2.9999999999999997e-05,
+  "weight_decay": 0.0001,
+  "image_size": [
+    64,
+    64
+  ],
+  "classes": [
+    "Angry",
+    "Disgust",
+    "Fear",
+    "Happy",
+    "Neutral",
+    "Sad",
+    "Surprise"
+  ],
+  "best_val_macro_f1": 0.021541950113378686,
+  "final_eval_split": "test",
+  "test_accuracy": 0.075,
+  "test_macro_f1": 0.02666666666666667,
+  "test_classification_report": {
+    "Angry": {
+      "precision": 0.7272727272727273,
+      "recall": 0.0898876404494382,
+      "f1-score": 0.16,
+      "support": 267.0
+    },
+    "Disgust": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 53.0
+    },
+    "Fear": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 0.0
+    },
+    "Happy": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 0.0
+    },
+    "Neutral": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 0.0
+    },
+    "Sad": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 0.0
+    },
+    "Surprise": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 0.0
+    },
+    "accuracy": 0.075,
+    "macro avg": {
+      "precision": 0.1038961038961039,
+      "recall": 0.012841091492776886,
+      "f1-score": 0.022857142857142857,
+      "support": 320.0
+    },
+    "weighted avg": {
+      "precision": 0.6068181818181818,
+      "recall": 0.075,
+      "f1-score": 0.1335,
+      "support": 320.0
+    }
+  },
+  "test_confusion_matrix": [
+    [
+      24,
+      3,
+      0,
+      1,
+      197,
+      21,
+      21
+    ],
+    [
+      9,
+      0,
+      0,
+      0,
+      35,
+      4,
+      5
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  ],
+  "train_minutes": 3.2685469031333922,
+  "history": [
+    {
+      "stage": "warmup",
+      "epoch": 1,
+      "train_loss": 2.0308387994766237,
+      "train_acc": 0.1375,
+      "val_loss": 1.9444709777832032,
+      "val_acc": 0.059375,
+      "val_macro_f1": 0.021541950113378686
+    },
+    {
+      "stage": "full_finetune",
+      "epoch": 1,
+      "train_loss": 2.04015052318573,
+      "train_acc": 0.146875,
+      "val_loss": 1.9672158002853393,
+      "val_acc": 0.00625,
+      "val_macro_f1": 0.005992206455407691
+    }
+  ]
+}

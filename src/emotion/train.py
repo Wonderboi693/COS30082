@@ -1,13 +1,4 @@
-"""
-Train EmotionNet on RAF-DB (ImageNet-initialised ResNet18, trained on our own data).
-
-Recipe:
-  Stage 1 (warm-up): pretrained ResNet stages frozen; new stem + classifier head trained.
-  Stage 2 (full fine-tune): all layers unfrozen; backbone uses higher LR so it can adapt.
-  --no-pretrained trains from scratch.
-"""
-
-import argparse
+﻿import argparse
 import json
 import random
 import sys
@@ -124,15 +115,15 @@ def evaluate(model, loader, criterion, device, max_batches=None):
 def run():
     global AMP_ENABLED
     parser = argparse.ArgumentParser(description="Train EmotionNet.")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Base learning rate")
+    parser.add_argument("--lr", type=float, default=Config.EMOTION_LR, help="Base learning rate")
     parser.add_argument("--batch-size", type=int, default=Config.EMOTION_BATCH_SIZE)
-    parser.add_argument("--head-epochs", type=int, default=3,
+    parser.add_argument("--head-epochs", type=int, default=5,
                         help="Stage 1 warm-up epochs (pretrained stages frozen). 0 to skip.")
-    parser.add_argument("--full-epochs", type=int, default=15,
+    parser.add_argument("--full-epochs", type=int, default=25,
                         help="Stage 2 epochs (all layers trainable)")
-    parser.add_argument("--patience", type=int, default=5,
+    parser.add_argument("--patience", type=int, default=7,
                         help="Early stopping patience (epochs without val macro-F1 improvement).")
-    parser.add_argument("--pretrained-lr-mult", type=float, default=0.2,
+    parser.add_argument("--pretrained-lr-mult", type=float, default=0.5,
                         help="LR multiplier for pretrained backbone during stage 2.")
     parser.add_argument("--pretrained", action=argparse.BooleanOptionalAction, default=True,
                         help="Initialise backbone from ImageNet (use --no-pretrained for scratch baseline)")
@@ -170,7 +161,6 @@ def run():
     log_path = results_dir / f"emotion_{tag}.json"
 
     def dump_log(extra=None):
-        """Write the run log after every epoch."""
         data = {
             "tag": tag,
             "hyperparameters": vars(args),
@@ -242,18 +232,13 @@ def run():
 
     t0 = time.time()
     if args.pretrained:
-        # ---- Stage 1: warm-up (pretrained stages frozen) ----
         if args.head_epochs > 0:
             print(f"\n[*] Stage 1: warm-up {args.head_epochs} epochs (ResNet stages frozen)")
             freeze_pretrained_stages(model)
             opt1 = optim.AdamW(fresh_params, lr=args.lr, weight_decay=Config.WEIGHT_DECAY)
-            sched1 = optim.lr_scheduler.OneCycleLR(
-                opt1, max_lr=args.lr, epochs=args.head_epochs,
-                steps_per_epoch=len(train_loader), pct_start=0.3
-            )
+            sched1 = optim.lr_scheduler.CosineAnnealingLR(opt1, T_max=args.head_epochs)
             run_stage("warmup", args.head_epochs, opt1, sched1, frozen_eval=frozen_bn)
 
-        # ---- Stage 2: full fine-tune (backbone adapts with higher LR) ----
         print(f"\n[*] Stage 2: full fine-tuning {args.full_epochs} epochs (all layers trainable)")
         model.unfreeze_backbone()
         opt2 = optim.AdamW(
@@ -261,25 +246,18 @@ def run():
              {"params": fresh_params, "lr": args.lr}],
             weight_decay=Config.WEIGHT_DECAY,
         )
-        sched2 = optim.lr_scheduler.OneCycleLR(
-            opt2, max_lr=args.lr, epochs=args.full_epochs,
-            steps_per_epoch=len(train_loader), pct_start=0.3
-        )
+        sched2 = optim.lr_scheduler.CosineAnnealingLR(opt2, T_max=args.full_epochs)
         run_stage("full_finetune", args.full_epochs, opt2, sched2)
     else:
         total = args.head_epochs + args.full_epochs
         print(f"\n[*] Training from scratch for {total} epochs (single stage)")
         opt = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=Config.WEIGHT_DECAY)
-        sched = optim.lr_scheduler.OneCycleLR(
-            opt, max_lr=args.lr, epochs=total,
-            steps_per_epoch=len(train_loader), pct_start=0.3
-        )
+        sched = optim.lr_scheduler.CosineAnnealingLR(opt, T_max=total)
         run_stage("scratch", total, opt, sched)
 
     train_minutes = (time.time() - t0) / 60.0
     print(f"\n[✓] Training done in {train_minutes:.1f} min. Best val Macro F1: {best_f1*100:.2f}%")
 
-    # ---- Final evaluation: held-out test split if there is one, otherwise val ----
     ckpt = torch.load(save_path, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model_state"])
     if test_loader is not None:
@@ -299,7 +277,7 @@ def run():
                                 target_names=Config.EMOTION_CLASSES, zero_division=0))
 
     log = {
-        "status": "finished",
+        "status": "finished",        "status": "finished",
         "tag": tag,
         "hyperparameters": vars(args),
         "base_lr": args.lr,
