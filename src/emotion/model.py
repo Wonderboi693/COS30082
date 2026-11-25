@@ -8,7 +8,7 @@ from src.config import Config
 
 class EmotionNet(nn.Module):
     """
-    Multi-Class Facial Expression Classifier (7 Basic Emotions).
+    Multi-Class Facial Expression Classifier (9 emotion classes).
     Optimized for low-latency inference (< 30ms requirement).
     """
     def __init__(
@@ -57,6 +57,6 @@ class EmotionNet(nn.Module):
         return self.classifier(x)
 
     def predict_probabilities(self, x: torch.Tensor) -> torch.Tensor:
-        """Outputs normalized class probabilities across the 7 emotions."""
+        """Outputs normalized class probabilities across the emotion classes."""
         with torch.no_grad():
             return F.softmax(self.forward(x), dim=-1)

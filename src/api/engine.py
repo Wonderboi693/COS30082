@@ -43,10 +43,13 @@ class AppFaceDetector:
             log.warning("Could not initialize common FaceDetector: %s", e)
 
         try:
-            path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            from src.common.face_detector import _find_haar_cascade
+            path = _find_haar_cascade()
             c = cv2.CascadeClassifier(path)
             if not c.empty():
                 self.cascade = c
+            else:
+                log.warning("Không load được Haar Cascade từ %s", path)
         except Exception:
             pass
 

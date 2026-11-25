@@ -61,12 +61,41 @@ def _try_mediapipe():
         return None, None
 
 
+def _find_haar_cascade() -> str:
+    """Tìm file haarcascade_frontalface_default.xml của OpenCV (nếu có).
+
+    Trả về đường dẫn đầu tiên tồn tại, hoặc đường dẫn mặc định để để caller
+    tự xử lý trường hợp không tìm thấy.
+    """
+    import cv2
+    import os
+
+    # Ưu tiên file đã đóng gói trong dự án (không phụ thuộc vào cv2.data)
+    project_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "common",
+        "haarcascade_frontalface_default.xml",
+    )
+
+    candidates = [
+        project_path,
+        cv2.data.haarcascades + "haarcascade_frontalface_default.xml",
+        "/usr/local/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+        "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+        "/opt/homebrew/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+    ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    return candidates[0]
+
+
 def _try_opencv():
     """OpenCV cascade fallback."""
     try:
         import cv2
 
-        path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        path = _find_haar_cascade()
         cascade = cv2.CascadeClassifier(path)
         if cascade.empty():
             return None, None

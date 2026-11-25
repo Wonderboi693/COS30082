@@ -3,6 +3,7 @@ import json
 import random
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -147,13 +148,36 @@ def run():
 
     train_loader, val_loader, test_loader = get_emotion_loaders(batch_size=args.batch_size)
 
+    # ----------------------------------------------------------------
+    # Class weights để xử lý mất cân bằng dữ liệu (dominant class bias)
+    # ----------------------------------------------------------------
+    train_labels = [lbl for _, lbl in train_loader.dataset.samples] \
+        if hasattr(train_loader.dataset, 'samples') else None
+
+    if train_labels is None and hasattr(train_loader.dataset, 'dataset'):
+        # Trường hợp dataset là Subset (khi không có val/ folder)
+        train_labels = [train_loader.dataset.dataset.samples[i][1]
+                        for i in train_loader.dataset.indices]
+
+    class_weight = None
+    if train_labels is not None:
+        counts = np.bincount(train_labels, minlength=Config.NUM_EMOTIONS)
+        # Trọng số ngược tần suất, chuẩn hóa sao tổng = NUM_EMOTIONS
+        weights = 1.0 / (counts.astype(np.float64) + 1e-6)
+        weights = weights / weights.sum() * Config.NUM_EMOTIONS
+        class_weight = torch.tensor(weights, dtype=torch.float32).to(device)
+        print(f"[*] Class weights: " +
+              ", ".join(f"{c}={w:.3f}" for c, w in zip(Config.EMOTION_CLASSES, weights)))
+    else:
+        print("[!] Không lấy được nhãn train để tính class weight, dùng loss mặc định.")
+
     model = EmotionNet(
         num_classes=Config.NUM_EMOTIONS,
         pretrained_backbone=args.pretrained,
         freeze_backbone=False,
     ).to(device)
 
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
+    criterion = nn.CrossEntropyLoss(weight=class_weight, label_smoothing=0.05)
     save_path = Path(args.save_path or Config.EMOTION_CHECKPOINT)
     save_path.parent.mkdir(parents=True, exist_ok=True)
     results_dir = Path(args.results_dir) if args.results_dir else Path(Config.PROJECT_ROOT) / "results"
