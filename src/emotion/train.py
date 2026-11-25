@@ -3,7 +3,6 @@ import json
 import random
 import sys
 import time
-from collections import Counter
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -24,9 +23,6 @@ from src.emotion.model import EmotionNet
 torch.backends.cudnn.benchmark = True
 AMP_ENABLED = True
 
-PRETRAINED_STAGES = (3, 4, 5, 6)
-FRESH_STEM = (0, 1)
-
 
 def set_seed(seed: int = 42):
     random.seed(seed)
@@ -40,7 +36,7 @@ def stage_modules(model, indices):
 
 
 def freeze_pretrained_stages(model):
-    for m in stage_modules(model, PRETRAINED_STAGES):
+    for m in stage_modules(model, model.pretrained_indices):
         for p in m.parameters():
             p.requires_grad = False
 
@@ -116,68 +112,42 @@ def evaluate(model, loader, criterion, device, max_batches=None):
 def run():
     global AMP_ENABLED
     parser = argparse.ArgumentParser(description="Train EmotionNet.")
-    parser.add_argument("--lr", type=float, default=Config.EMOTION_LR, help="Base learning rate")
+    parser.add_argument("--backbone", default="convnext_tiny", choices=["convnext_tiny", "resnet18"])
+    parser.add_argument("--lr", type=float, default=2e-4, help="Base learning rate")
     parser.add_argument("--batch-size", type=int, default=Config.EMOTION_BATCH_SIZE)
     parser.add_argument("--head-epochs", type=int, default=5,
-                        help="Stage 1 warm-up epochs (pretrained stages frozen). 0 to skip.")
+                        help="Stage 1 warm-up epochs (pretrained stages frozen).")
     parser.add_argument("--full-epochs", type=int, default=25,
                         help="Stage 2 epochs (all layers trainable)")
     parser.add_argument("--patience", type=int, default=7,
-                        help="Early stopping patience (epochs without val macro-F1 improvement).")
+                        help="Early stopping patience.")
     parser.add_argument("--pretrained-lr-mult", type=float, default=0.5,
                         help="LR multiplier for pretrained backbone during stage 2.")
-    parser.add_argument("--pretrained", action=argparse.BooleanOptionalAction, default=True,
-                        help="Initialise backbone from ImageNet (use --no-pretrained for scratch baseline)")
-    parser.add_argument("--tag", default=None, help="Run name used for log file")
-    parser.add_argument("--save-path", default=None,
-                        help="Checkpoint path (default: Config.EMOTION_CHECKPOINT)")
-    parser.add_argument("--results-dir", default=None,
-                        help="Where to write the JSON run log")
+    parser.add_argument("--pretrained", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--tag", default=None)
+    parser.add_argument("--save-path", default=None)
+    parser.add_argument("--results-dir", default=None)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--no-amp", action="store_true",
-                        help="Disable mixed precision (use if validation loss is NaN)")
-    parser.add_argument("--max-batches", type=int, default=None,
-                        help="Smoke test only: limit batches per epoch / evaluation")
+    parser.add_argument("--no-amp", action="store_true")
+    parser.add_argument("--max-batches", type=int, default=None)
     args = parser.parse_args()
     AMP_ENABLED = not args.no_amp
 
     set_seed(args.seed)
     device = Config.DEVICE
-    tag = args.tag or ("pretrained" if args.pretrained else "scratch")
-    print(f"[*] Training Emotion Recognition Classifier on {device} (run: {tag})")
+    tag = args.tag or f"{args.backbone}_{'pretrained' if args.pretrained else 'scratch'}"
+    print(f"[*] Training EmotionNet [{args.backbone}] on {device} (run: {tag})")
 
     train_loader, val_loader, test_loader = get_emotion_loaders(batch_size=args.batch_size)
-
-    # ----------------------------------------------------------------
-    # Class weights để xử lý mất cân bằng dữ liệu (dominant class bias)
-    # ----------------------------------------------------------------
-    train_labels = [lbl for _, lbl in train_loader.dataset.samples] \
-        if hasattr(train_loader.dataset, 'samples') else None
-
-    if train_labels is None and hasattr(train_loader.dataset, 'dataset'):
-        # Trường hợp dataset là Subset (khi không có val/ folder)
-        train_labels = [train_loader.dataset.dataset.samples[i][1]
-                        for i in train_loader.dataset.indices]
-
-    class_weight = None
-    if train_labels is not None:
-        counts = np.bincount(train_labels, minlength=Config.NUM_EMOTIONS)
-        # Trọng số ngược tần suất, chuẩn hóa sao tổng = NUM_EMOTIONS
-        weights = 1.0 / (counts.astype(np.float64) + 1e-6)
-        weights = weights / weights.sum() * Config.NUM_EMOTIONS
-        class_weight = torch.tensor(weights, dtype=torch.float32).to(device)
-        print(f"[*] Class weights: " +
-              ", ".join(f"{c}={w:.3f}" for c, w in zip(Config.EMOTION_CLASSES, weights)))
-    else:
-        print("[!] Không lấy được nhãn train để tính class weight, dùng loss mặc định.")
 
     model = EmotionNet(
         num_classes=Config.NUM_EMOTIONS,
         pretrained_backbone=args.pretrained,
         freeze_backbone=False,
+        backbone=args.backbone,
     ).to(device)
 
-    criterion = nn.CrossEntropyLoss(weight=class_weight, label_smoothing=0.05)
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
     save_path = Path(args.save_path or Config.EMOTION_CHECKPOINT)
     save_path.parent.mkdir(parents=True, exist_ok=True)
     results_dir = Path(args.results_dir) if args.results_dir else Path(Config.PROJECT_ROOT) / "results"
@@ -187,6 +157,7 @@ def run():
     def dump_log(extra=None):
         data = {
             "tag": tag,
+            "backbone": args.backbone,
             "hyperparameters": vars(args),
             "image_size": Config.IMAGE_SIZE,
             "classes": Config.EMOTION_CLASSES,
@@ -206,6 +177,7 @@ def run():
         torch.save({
             "epoch": epoch,
             "stage": stage,
+            "backbone": args.backbone,
             "model_state": model.state_dict(),
             "classes": Config.EMOTION_CLASSES,
             "image_size": Config.IMAGE_SIZE[0],
@@ -248,16 +220,16 @@ def run():
                     break
 
     fresh_params = (
-        [p for i in FRESH_STEM for p in model.features[i].parameters()]
+        [p for i in model.fresh_indices for p in model.features[i].parameters()]
         + list(model.classifier.parameters())
     )
-    pretrained_params = [p for i in PRETRAINED_STAGES for p in model.features[i].parameters()]
-    frozen_bn = stage_modules(model, PRETRAINED_STAGES)
+    pretrained_params = [p for i in model.pretrained_indices for p in model.features[i].parameters()]
+    frozen_bn = stage_modules(model, model.pretrained_indices)
 
     t0 = time.time()
     if args.pretrained:
         if args.head_epochs > 0:
-            print(f"\n[*] Stage 1: warm-up {args.head_epochs} epochs (ResNet stages frozen)")
+            print(f"\n[*] Stage 1: warm-up {args.head_epochs} epochs (pretrained stages frozen)")
             freeze_pretrained_stages(model)
             opt1 = optim.AdamW(fresh_params, lr=args.lr, weight_decay=Config.WEIGHT_DECAY)
             sched1 = optim.lr_scheduler.CosineAnnealingLR(opt1, T_max=args.head_epochs)
@@ -284,11 +256,7 @@ def run():
 
     ckpt = torch.load(save_path, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model_state"])
-    if test_loader is not None:
-        split, final_loader = "test", test_loader
-    else:
-        split, final_loader = "val", val_loader
-        print("[!] No test split available: the final metrics below are on the VALIDATION split.")
+    split, final_loader = ("test", test_loader) if test_loader is not None else ("val", val_loader)
     final_res = evaluate(model, final_loader, criterion, device, max_batches=args.max_batches)
     labels = list(range(Config.NUM_EMOTIONS))
     report = classification_report(
@@ -301,8 +269,9 @@ def run():
                                 target_names=Config.EMOTION_CLASSES, zero_division=0))
 
     log = {
-        "status": "finished",        "status": "finished",
+        "status": "finished",
         "tag": tag,
+        "backbone": args.backbone,
         "hyperparameters": vars(args),
         "base_lr": args.lr,
         "pretrained_lr": args.lr * args.pretrained_lr_mult,

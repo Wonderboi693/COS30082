@@ -1,4 +1,4 @@
-import torch
+﻿import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
@@ -9,35 +9,61 @@ from src.config import Config
 class EmotionNet(nn.Module):
     """
     Multi-Class Facial Expression Classifier (9 emotion classes).
-    Optimized for low-latency inference (< 30ms requirement).
+    Supports 'convnext_tiny' and 'resnet18' backbones adapted for 64x64 faces.
     """
     def __init__(
         self,
         num_classes: int = Config.NUM_EMOTIONS,
         pretrained_backbone: bool = False,
         freeze_backbone: bool = False,
+        backbone: str = "convnext_tiny",
     ):
         super().__init__()
-        base = models.resnet18(weights=models.ResNet18_Weights.DEFAULT if pretrained_backbone else None)
+        self.backbone_name = backbone
 
-        # 64x64 resolution adapted stem
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False),
-            base.bn1,
-            base.relu,
-            base.layer1,  # 64 channels
-            base.layer2,  # 128 channels
-            base.layer3,  # 256 channels
-            base.layer4,  # 512 channels
-            nn.AdaptiveAvgPool2d((1, 1))
-        )
+        if backbone == "convnext_tiny":
+            base = models.convnext_tiny(
+                weights=models.ConvNeXt_Tiny_Weights.DEFAULT if pretrained_backbone else None
+            )
+            # Adapt stem from stride=4 to stride=2 for 64x64 input (keeps 4x4 final spatial map)
+            stem_norm = base.features[0][1]
+            base.features[0] = nn.Sequential(
+                nn.Conv2d(3, 96, kernel_size=2, stride=2),
+                stem_norm,
+            )
+            self.features = nn.Sequential(
+                *list(base.features.children()),
+                nn.AdaptiveAvgPool2d((1, 1)),
+            )
+            in_features = 768
+            self.pretrained_indices = tuple(range(1, len(base.features)))
+            self.fresh_indices = (0,)
+        elif backbone == "resnet18":
+            base = models.resnet18(
+                weights=models.ResNet18_Weights.DEFAULT if pretrained_backbone else None
+            )
+            self.features = nn.Sequential(
+                nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False),
+                base.bn1,
+                base.relu,
+                base.layer1,
+                base.layer2,
+                base.layer3,
+                base.layer4,
+                nn.AdaptiveAvgPool2d((1, 1)),
+            )
+            in_features = 512
+            self.pretrained_indices = (3, 4, 5, 6)
+            self.fresh_indices = (0, 1)
+        else:
+            raise ValueError(f"Unsupported backbone: {backbone}")
 
         self.classifier = nn.Sequential(
-            nn.Linear(512, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(inplace=True),
+            nn.Linear(in_features, 192),
+            nn.BatchNorm1d(192),
+            nn.GELU(),
             nn.Dropout(p=0.4),
-            nn.Linear(128, num_classes)
+            nn.Linear(192, num_classes),
         )
 
         if freeze_backbone:
