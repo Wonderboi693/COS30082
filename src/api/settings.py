@@ -33,5 +33,6 @@ class Settings:
     attendance_dir: Path = field(default_factory=lambda: _path(
         "FACE_ATTENDANCE_DIR", PROJECT_ROOT / "outputs" / "attendance_logs"))
     attendance_cooldown_s: float = field(default_factory=lambda: float(os.environ.get("FACE_ATTENDANCE_COOLDOWN", "60")))
+    emotion_conf_thresh: float = field(default_factory=lambda: float(os.environ.get("FACE_EMOTION_CONF_THRESH", "0.35")))
 
     frontend_dir: Path = PROJECT_ROOT / "frontend" / "web"

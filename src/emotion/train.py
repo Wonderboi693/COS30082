@@ -1,18 +1,10 @@
 """
 Train EmotionNet on RAF-DB (ImageNet-initialised ResNet18, trained on our own data).
 
-Recipe (documented for the group report):
-  Stage 1 (warm-up): pretrained ResNet stages frozen; new stem conv/bn1 and the
-                     classifier head are trained.
-  Stage 2 (full fine-tune): every layer is unfrozen. Pretrained stages use a
-                     lower LR (lr * 0.1); new stem + head use the full LR.
-  --no-pretrained trains the same architecture from scratch (single stage), which
-  gives a baseline for the Discussion section.
-
-After training, the best checkpoint (by validation macro-F1) is evaluated ONCE on
-the held-out test split and everything is logged to results/.
-
-Requires get_emotion_loaders() to return (train_loader, val_loader, test_loader); test_loader may be None.
+Recipe:
+  Stage 1 (warm-up): pretrained ResNet stages frozen; new stem + classifier head trained.
+  Stage 2 (full fine-tune): all layers unfrozen; backbone uses higher LR so it can adapt.
+  --no-pretrained trains from scratch.
 """
 
 import argparse
@@ -38,10 +30,8 @@ from src.emotion.dataset import get_emotion_loaders
 from src.emotion.model import EmotionNet
 
 torch.backends.cudnn.benchmark = True
-AMP_ENABLED = True  # mixed precision on CUDA; turn off with --no-amp (fp16 can produce NaN on some GPUs)
+AMP_ENABLED = True
 
-# Indices of the pretrained ResNet stages inside EmotionNet.features
-# (0 = new 3x3 conv, 1 = bn1, 2 = relu, 3..6 = layer1..layer4, 7 = avgpool)
 PRETRAINED_STAGES = (3, 4, 5, 6)
 FRESH_STEM = (0, 1)
 
@@ -66,7 +56,6 @@ def freeze_pretrained_stages(model):
 def train_epoch(model, loader, criterion, optimizer, scaler, device, frozen_eval=(),
                 max_batches=None):
     model.train()
-    # Frozen BN layers must stay in eval mode, otherwise their running stats still change.
     for m in frozen_eval:
         m.eval()
 
@@ -135,23 +124,26 @@ def evaluate(model, loader, criterion, device, max_batches=None):
 def run():
     global AMP_ENABLED
     parser = argparse.ArgumentParser(description="Train EmotionNet.")
-    parser.add_argument("--lr", type=float, default=Config.EMOTION_LR, help="Base learning rate")
+    parser.add_argument("--lr", type=float, default=1e-4, help="Base learning rate")
     parser.add_argument("--batch-size", type=int, default=Config.EMOTION_BATCH_SIZE)
-    parser.add_argument("--head-epochs", type=int, default=5,
+    parser.add_argument("--head-epochs", type=int, default=3,
                         help="Stage 1 warm-up epochs (pretrained stages frozen). 0 to skip.")
-    parser.add_argument("--full-epochs", type=int, default=20,
+    parser.add_argument("--full-epochs", type=int, default=15,
                         help="Stage 2 epochs (all layers trainable)")
+    parser.add_argument("--patience", type=int, default=5,
+                        help="Early stopping patience (epochs without val macro-F1 improvement).")
+    parser.add_argument("--pretrained-lr-mult", type=float, default=0.2,
+                        help="LR multiplier for pretrained backbone during stage 2.")
     parser.add_argument("--pretrained", action=argparse.BooleanOptionalAction, default=True,
                         help="Initialise backbone from ImageNet (use --no-pretrained for scratch baseline)")
-    parser.add_argument("--tag", default=None, help="Run name used for log file (default: pretrained/scratch)")
+    parser.add_argument("--tag", default=None, help="Run name used for log file")
     parser.add_argument("--save-path", default=None,
                         help="Checkpoint path (default: Config.EMOTION_CHECKPOINT)")
     parser.add_argument("--results-dir", default=None,
-                        help="Where to write the JSON run log (default: <project>/results). "
-                             "On Colab point this at a Drive folder so it survives the session.")
+                        help="Where to write the JSON run log")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-amp", action="store_true",
-                        help="Disable mixed precision (use if validation loss is NaN, e.g. on GTX 16xx cards)")
+                        help="Disable mixed precision (use if validation loss is NaN)")
     parser.add_argument("--max-batches", type=int, default=None,
                         help="Smoke test only: limit batches per epoch / evaluation")
     args = parser.parse_args()
@@ -178,7 +170,7 @@ def run():
     log_path = results_dir / f"emotion_{tag}.json"
 
     def dump_log(extra=None):
-        """Write the run log. Called after every epoch, so a crash or disconnect keeps what is done so far."""
+        """Write the run log after every epoch."""
         data = {
             "tag": tag,
             "hyperparameters": vars(args),
@@ -193,6 +185,7 @@ def run():
     use_amp = AMP_ENABLED and device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     best_f1 = 0.0
+    patience_counter = 0
     history = []
 
     def save_best(epoch, stage, val_res):
@@ -207,11 +200,10 @@ def run():
             "train_args": vars(args),
         }, save_path)
 
-    def run_stage(name, epochs, optimizer, frozen_eval=()):
-        nonlocal best_f1
+    def run_stage(name, epochs, optimizer, scheduler, frozen_eval=()):
+        nonlocal best_f1, patience_counter
         if epochs <= 0:
             return
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
         for epoch in range(1, epochs + 1):
             tr_loss, tr_acc = train_epoch(model, train_loader, criterion, optimizer,
                                           scaler, device, frozen_eval,
@@ -232,8 +224,14 @@ def run():
                   f"Macro F1 {val_res['macro_f1']*100:.2f}%")
             if val_res["macro_f1"] > best_f1:
                 best_f1 = val_res["macro_f1"]
+                patience_counter = 0
                 save_best(epoch, name, val_res)
                 print(f"    --> Saved best checkpoint ({name}) Macro F1 {best_f1*100:.2f}%")
+            else:
+                patience_counter += 1
+                if patience_counter >= args.patience:
+                    print(f"    --> Early stopping at epoch {epoch} (no improvement for {args.patience} epochs)")
+                    break
 
     fresh_params = (
         [p for i in FRESH_STEM for p in model.features[i].parameters()]
@@ -244,40 +242,51 @@ def run():
 
     t0 = time.time()
     if args.pretrained:
-        # ---- Stage 1: warm-up with pretrained stages frozen ----
+        # ---- Stage 1: warm-up (pretrained stages frozen) ----
         if args.head_epochs > 0:
             print(f"\n[*] Stage 1: warm-up {args.head_epochs} epochs (ResNet stages frozen)")
             freeze_pretrained_stages(model)
             opt1 = optim.AdamW(fresh_params, lr=args.lr, weight_decay=Config.WEIGHT_DECAY)
-            run_stage("warmup", args.head_epochs, opt1, frozen_eval=frozen_bn)
+            sched1 = optim.lr_scheduler.OneCycleLR(
+                opt1, max_lr=args.lr, epochs=args.head_epochs,
+                steps_per_epoch=len(train_loader), pct_start=0.3
+            )
+            run_stage("warmup", args.head_epochs, opt1, sched1, frozen_eval=frozen_bn)
 
-        # ---- Stage 2: full fine-tuning ----
+        # ---- Stage 2: full fine-tune (backbone adapts with higher LR) ----
         print(f"\n[*] Stage 2: full fine-tuning {args.full_epochs} epochs (all layers trainable)")
         model.unfreeze_backbone()
         opt2 = optim.AdamW(
-            [{"params": pretrained_params, "lr": args.lr * 0.1},
+            [{"params": pretrained_params, "lr": args.lr * args.pretrained_lr_mult},
              {"params": fresh_params, "lr": args.lr}],
             weight_decay=Config.WEIGHT_DECAY,
         )
-        run_stage("full_finetune", args.full_epochs, opt2)
+        sched2 = optim.lr_scheduler.OneCycleLR(
+            opt2, max_lr=args.lr, epochs=args.full_epochs,
+            steps_per_epoch=len(train_loader), pct_start=0.3
+        )
+        run_stage("full_finetune", args.full_epochs, opt2, sched2)
     else:
         total = args.head_epochs + args.full_epochs
         print(f"\n[*] Training from scratch for {total} epochs (single stage)")
         opt = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=Config.WEIGHT_DECAY)
-        run_stage("scratch", total, opt)
+        sched = optim.lr_scheduler.OneCycleLR(
+            opt, max_lr=args.lr, epochs=total,
+            steps_per_epoch=len(train_loader), pct_start=0.3
+        )
+        run_stage("scratch", total, opt, sched)
 
     train_minutes = (time.time() - t0) / 60.0
     print(f"\n[✓] Training done in {train_minutes:.1f} min. Best val Macro F1: {best_f1*100:.2f}%")
 
-    # ---- Final evaluation: held-out test split if there is one, otherwise the validation split ----
+    # ---- Final evaluation: held-out test split if there is one, otherwise val ----
     ckpt = torch.load(save_path, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model_state"])
     if test_loader is not None:
         split, final_loader = "test", test_loader
     else:
         split, final_loader = "val", val_loader
-        print("[!] No test split available: the final metrics below are on the VALIDATION split "
-              "(the checkpoint was chosen on it, so they are optimistic).")
+        print("[!] No test split available: the final metrics below are on the VALIDATION split.")
     final_res = evaluate(model, final_loader, criterion, device, max_batches=args.max_batches)
     labels = list(range(Config.NUM_EMOTIONS))
     report = classification_report(
@@ -294,8 +303,7 @@ def run():
         "tag": tag,
         "hyperparameters": vars(args),
         "base_lr": args.lr,
-        "pretrained_lr": args.lr * 0.1,
-        "weight_decay": Config.WEIGHT_DECAY,
+        "pretrained_lr": args.lr * args.pretrained_lr_mult,
         "image_size": Config.IMAGE_SIZE,
         "classes": Config.EMOTION_CLASSES,
         "best_val_macro_f1": best_f1,

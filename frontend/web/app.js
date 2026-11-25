@@ -108,13 +108,28 @@ async function liveLoop() {
   }
 }
 
+const EMOTION_ICONS = {
+  happy: "😊",
+  sad: "😢",
+  angry: "😠",
+  surprise: "😲",
+  fear: "😨",
+  disgust: "🤢",
+  neutral: "😐",
+  confused: "🤔",
+  shy: "😳",
+  uncertain: "😶"
+};
+const emotionIcon = (name) => EMOTION_ICONS[String(name || "").toLowerCase()] || "🙂";
+
 const isSpoof = (f) => f.liveness && !f.liveness.passed;
 const faceColor = (f) => (isSpoof(f) ? "#f59e0b" : f.access_granted ? "#22c55e" : "#ef4444");
 function faceLabel(f) {
   if (isSpoof(f)) return "SPOOF?";
   const id = f.identity || {};
   const sim = id.similarity == null ? "" : ` ${id.similarity.toFixed(2)}`;
-  return `${id.name || "Unknown"}${sim}${f.emotion ? " · " + f.emotion.dominant : ""}`;
+  const emo = f.emotion ? ` · ${emotionIcon(f.emotion.dominant)} ${f.emotion.dominant}` : "";
+  return `${id.name || "Unknown"}${sim}${emo}`;
 }
 function drawOverlay(r) {
   const cv = $("liveOverlay");
@@ -142,7 +157,11 @@ function listResults(r) {
     const id = f.identity || {};
     const tags = [];
     if (f.liveness) tags.push(`liveness ${f.liveness.score.toFixed(2)}${f.liveness.smoothed ? ` (avg ${f.liveness.frames}f)` : ""}`);
-    if (f.emotion) tags.push(`${f.emotion.dominant} ${(f.emotion.confidence * 100).toFixed(0)}%`);
+    if (f.emotion) {
+      const icon = emotionIcon(f.emotion.dominant);
+      const smoothedTag = f.emotion.smoothed ? " (smoothed)" : "";
+      tags.push(`${icon} ${f.emotion.dominant} ${(f.emotion.confidence * 100).toFixed(0)}%${smoothedTag}`);
+    }
     if (id.closest && !id.matched) tags.push(`closest: ${id.closest}`);
     if (f.checked_in) tags.push("✔ checked in");
     const cls = isSpoof(f) ? "warn" : f.access_granted ? "ok" : "bad";
@@ -246,7 +265,7 @@ async function loadLog() {
   const body = $("logBody");
   try {
     const rows = await api("/api/attendance?day=" + encodeURIComponent($("logDate").value || today()));
-    body.innerHTML = rows.length ? rows.map((r) => `<tr><td>${esc(r.timestamp.replace("T", " "))}</td><td>${esc(r.name)}</td><td>${esc(r.person_id)}</td><td>${esc(r.model)}</td><td>${esc(r.similarity)}</td><td>${esc(r.liveness_score || "–")}</td><td>${esc(r.emotion || "–")}</td></tr>`).join("")
+    body.innerHTML = rows.length ? rows.map((r) => `<tr><td>${esc(r.timestamp.replace("T", " "))}</td><td>${esc(r.name)}</td><td>${esc(r.person_id)}</td><td>${esc(r.model)}</td><td>${esc(r.similarity)}</td><td>${esc(r.liveness_score || "–")}</td><td>${r.emotion ? `${emotionIcon(r.emotion)} ${esc(r.emotion)}` : "–"}</td></tr>`).join("")
       : '<tr><td colspan="7" class="muted">No check-ins for this day.</td></tr>';
   } catch (e) { body.innerHTML = `<tr><td colspan="7" class="msg bad">${esc(e.message)}</td></tr>`; }
 }

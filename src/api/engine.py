@@ -29,20 +29,53 @@ log = logging.getLogger("face_api")
 PRECROPPED_MAX_SIDE = 160
 
 
-class HaarFaceDetector:
-    """OpenCV Haar cascade; ships with opencv-python, no download needed."""
+class AppFaceDetector:
+    """Robust face detector: uses project's common FaceDetector (MTCNN/MediaPipe) with Haar fallback."""
 
-    def __init__(self):
-        path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        self.cascade = cv2.CascadeClassifier(path)
-        if self.cascade.empty():
-            raise RuntimeError(f"Could not load Haar cascade from {path}")
+    def __init__(self, device: str = "auto"):
+        self.common_detector = None
+        self.cascade = None
+        try:
+            from src.common.face_detector import FaceDetector
+            self.common_detector = FaceDetector(device=device)
+            log.info("AppFaceDetector using common FaceDetector (backend: %s)", self.common_detector.backend)
+        except Exception as e:
+            log.warning("Could not initialize common FaceDetector: %s", e)
+
+        try:
+            path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            c = cv2.CascadeClassifier(path)
+            if not c.empty():
+                self.cascade = c
+        except Exception:
+            pass
 
     def detect(self, rgb: np.ndarray):
-        gray = cv2.equalizeHist(cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY))
-        min_side = max(40, min(gray.shape[:2]) // 10)
-        boxes = self.cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=6, minSize=(min_side, min_side))
-        return [tuple(int(v) for v in b) for b in boxes]  # (x, y, w, h)
+        if self.common_detector is not None:
+            try:
+                pil = Image.fromarray(rgb)
+                boxes = self.common_detector._run_detection(pil)
+                if boxes:
+                    out = []
+                    H, W = rgb.shape[:2]
+                    for b in boxes:
+                        x1 = max(0, int(b[0]))
+                        y1 = max(0, int(b[1]))
+                        w = min(W - x1, int(b[2] - b[0]))
+                        h = min(H - y1, int(b[3] - b[1]))
+                        if w > 15 and h > 15:
+                            out.append((x1, y1, w, h))
+                    if out:
+                        return out
+            except Exception as e:
+                log.warning("Face detection failed on frame: %s", e)
+
+        if self.cascade is not None:
+            gray = cv2.equalizeHist(cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY))
+            min_side = max(40, min(gray.shape[:2]) // 10)
+            boxes = self.cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=6, minSize=(min_side, min_side))
+            return [tuple(int(v) for v in b) for b in boxes]  # (x, y, w, h)
+        return []
 
 
 def decode_image(data: bytes) -> np.ndarray:
@@ -52,7 +85,7 @@ def decode_image(data: bytes) -> np.ndarray:
 
 
 def expand_box(box, shape, margin=0.2):
-    """Haar boxes are tight; the training crops include some context around the face."""
+    """Face crops include some context around the face."""
     x, y, w, h = box
     H, W = shape[:2]
     dx, dy = int(w * margin), int(h * margin)
@@ -63,7 +96,7 @@ def expand_box(box, shape, margin=0.2):
 class FaceEngine:
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.detector = HaarFaceDetector()
+        self.detector = AppFaceDetector(device=settings.device)
         self.gallery = Gallery(settings.gallery_dir)
         self.attendance = AttendanceLog(settings.attendance_dir, settings.attendance_cooldown_s)
         self.fusion = AdaptiveSecurityFusion()
@@ -127,7 +160,8 @@ class FaceEngine:
         return {
             "model": self.model.key, "model_label": self.model.label, "threshold": self.threshold,
             "embedding_dim": self.extractor.dim,
-            "device": str(getattr(self.extractor, "device", "")), "detector": "opencv-haar",
+            "device": str(getattr(self.extractor, "device", "")),
+            "detector": getattr(getattr(self.detector, "common_detector", None), "backend", "opencv-haar"),
             "liveness": {"available": self.liveness is not None, "enabled": self.liveness_enabled,
                          "threshold": getattr(self.liveness, "threshold", None)},
             "emotion": {"available": self.emotion is not None, "enabled": self.emotion_enabled},
@@ -168,7 +202,27 @@ class FaceEngine:
     def _analyze_face(self, box, crop, precropped, smooth, log_attendance):
         item = {"box": list(box), "precropped": precropped, "liveness": None, "emotion": None,
                 "identity": None, "access_granted": False, "rejection_reason": None, "checked_in": False}
-        if self.liveness_enabled:
+
+        # Emotion recognition (runs on every detected face crop)
+        if self.emotion_enabled and self.emotion is not None:
+            try:
+                use_tta = smooth or getattr(self.emotion, "tta", False)
+                if use_tta and hasattr(self.emotion, "predict_emotion_with_tta"):
+                    e = self.emotion.predict_emotion_with_tta(crop, n_tta=5)
+                else:
+                    e = self.emotion.predict_emotion(crop)
+                # Always report the model's top label (no "Uncertain" fallback).
+                item["emotion"] = {"dominant": e["dominant_emotion"], "confidence": round(float(e["confidence"]), 4),
+                                   "distribution": e["distribution"], "smoothed": False}
+                if smooth:
+                    s = self.fusion.stabilize_emotion(e["distribution"])
+                    item["emotion"] = {"dominant": s["dominant_emotion"], "confidence": round(float(s["confidence"]), 4),
+                                       "distribution": s["smoothed_distribution"], "smoothed": True,
+                                       "stable": bool(s["is_stable"])}
+            except Exception as exc:
+                log.warning("Emotion prediction failed: %s", exc)
+
+        if self.liveness_enabled and self.liveness is not None:
             live, score = self.liveness.check_liveness(crop)
             item["liveness"] = {"passed": live, "score": round(score, 4), "smoothed": False}
             if smooth:
@@ -184,15 +238,6 @@ class FaceEngine:
         item["access_granted"] = item["identity"]["matched"]
         if not item["access_granted"]:
             item["rejection_reason"] = "IDENTITY_UNRECOGNIZED"
-
-        if self.emotion_enabled:
-            e = self.emotion.predict_emotion(crop)
-            item["emotion"] = {"dominant": e["dominant_emotion"], "confidence": e["confidence"],
-                               "distribution": e["distribution"], "smoothed": False}
-            if smooth:
-                s = self.fusion.stabilize_emotion(e["distribution"])
-                item["emotion"] = {"dominant": s["dominant_emotion"], "confidence": s["confidence"],
-                                   "distribution": s["smoothed_distribution"], "smoothed": True}
 
         if log_attendance and item["access_granted"]:
             ident = item["identity"]

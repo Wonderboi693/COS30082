@@ -1,0 +1,7 @@
+date,time,employee_name,checkin_status,liveness_status,liveness_score,similarity_score,detected_emotion,emotion_confidence
+2026-11-12,09:40:23,Spoof Attack,SECURITY_ALERT_SPOOF,FAIL,0.5268,0.0,Sad,0.54
+2026-11-12,09:40:33,Unknown,UNENROLLED_VISITOR,PASS,1.0,0.0,Neutral,0.4253
+2026-11-12,09:42:07,Unknown,UNENROLLED_VISITOR,PASS,1.0,0.0,Sad,0.4342
+2026-11-12,09:42:46,Unknown,UNENROLLED_VISITOR,PASS,1.0,0.0,Sad,0.6279
+2026-11-12,10:12:11,Spoof Attack,SECURITY_ALERT_SPOOF,FAIL,0.5188,0.0,Neutral,0.7459
+2026-11-12,10:12:42,Spoof Attack,SECURITY_ALERT_SPOOF,FAIL,0.527,0.0,Surprise,0.3644

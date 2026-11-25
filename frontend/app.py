@@ -44,11 +44,13 @@ FEATURE = (25, 25, 25)
 
 EMOTION_COLORS = {
     "angry": (70, 70, 225),
+    "confused": (140, 200, 100),
     "disgust": (90, 170, 90),
     "fear": (190, 120, 170),
     "happy": (60, 205, 245),
     "neutral": (175, 175, 175),
     "sad": (205, 135, 75),
+    "shy": (200, 140, 210),
     "surprise": (245, 175, 70),
     "uncertain": (130, 130, 138),
 }
@@ -176,6 +178,15 @@ def draw_emotion_icon(img, center, r, emotion: str):
         line((-0.5, -0.22), (-0.2, -0.22)); line((0.2, -0.22), (0.5, -0.22))
         pts = np.array([P(-0.42, 0.5), P(-0.2, 0.36), P(0.0, 0.52), P(0.2, 0.36), P(0.42, 0.52)], np.int32)
         cv2.polylines(img, [pts], False, FEATURE, t, cv2.LINE_AA)
+    elif key == "confused":
+        dot(-0.35, -0.22, 0.08); dot(0.35, -0.28, 0.1)
+        line((-0.55, -0.38), (-0.15, -0.42)); line((0.15, -0.48), (0.55, -0.36))
+        arc(0, 0.45, 0.35, 0.25, 20, 160)
+    elif key == "shy":
+        dot(-0.35, -0.2, 0.08); dot(0.35, -0.2, 0.08)
+        cv2.circle(img, P(-0.55, 0.05), max(2, int(0.12 * r)), (180, 150, 245), -1, cv2.LINE_AA)
+        cv2.circle(img, P(0.55, 0.05), max(2, int(0.12 * r)), (180, 150, 245), -1, cv2.LINE_AA)
+        arc(0, 0.3, 0.28, 0.2, 20, 160)
     elif key == "uncertain":
         cv2.putText(img, "?", (cx - int(0.3 * r), cy + int(0.4 * r)), cv2.FONT_HERSHEY_SIMPLEX,
                     r / 20.0, FEATURE, t, cv2.LINE_AA)
@@ -294,10 +305,8 @@ class Track:
         return label, avg[label], avg
 
     def emotion_label(self, thresh: float) -> Tuple[str, float, Dict[str, float]]:
-        """Smoothed emotion; reported as 'Uncertain' when the best class is below `thresh`."""
+        """Smoothed emotion; always returns the model's top label (no 'Uncertain' fallback)."""
         emo, econf, dist = self.emotion()
-        if emo != "N/A" and econf < thresh:
-            emo = "Uncertain"
         return emo, econf, dist
 
     def view(self, emo_thresh: float = 0.0) -> FaceView:
@@ -368,7 +377,7 @@ class AttendanceApp:
         print(f"[✓] Face Registry loaded: {len(self.registry.list_identities())} enrolled identities.")
         self.logger = AttendanceLogger(cooldown_seconds=30.0)
 
-        self.emotions: List[str] = list(Config.EMOTION_CLASSES)
+        self.emotions: List[str] = list(self.emotion_model.classes) if self.emotion_model else list(Config.EMOTION_CLASSES)
 
         # shared state ------------------------------------------------------------
         self.lock = threading.RLock()
@@ -532,7 +541,7 @@ class AttendanceApp:
             return
         emo, econf, _ = t.emotion_label(self.emotion_conf_thresh)
         if emo == "N/A":
-            emo, econf = "Uncertain", 0.0
+            emo, econf = "N/A", 0.0
         rec = None
         if t.is_live:
             name, conf = t.identity()
