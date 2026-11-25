@@ -123,6 +123,21 @@ class Gallery:
             return {"id": person["id"] if matched else None, "name": person["name"] if matched else "Unknown",
                     "closest": person["name"], "similarity": round(sim, 4), "matched": matched}
 
+    def get_template(self, person_id: str, model_key: str):
+        with self._lock:
+            ids, matrix = self._template(model_key)
+            if matrix is None or person_id not in ids:
+                return None
+            return matrix[ids.index(person_id)]
+
+    def update_template(self, person_id: str, model_key: str, new_embedding: np.ndarray) -> None:
+        with self._lock:
+            person = next((p for p in self._people if p["id"] == person_id), None)
+            if person is None:
+                return
+            person["embeddings"][model_key] = [[round(float(v), 6) for v in new_embedding]]
+            self._save()
+
 
 class AttendanceLog:
     FIELDS = ["timestamp", "person_id", "name", "model", "similarity", "liveness_score", "emotion"]

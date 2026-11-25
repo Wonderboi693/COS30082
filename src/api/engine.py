@@ -90,7 +90,7 @@ class FaceEngine:
         try:
             if kind == "liveness":
                 from src.anti_spoofing.detector import LivenessDetector
-                return LivenessDetector(str(ckpt), device=self.settings.device)
+                return LivenessDetector(str(ckpt), threshold=self.settings.liveness_threshold, device=self.settings.device)
             from src.emotion.detector import EmotionDetector
             return EmotionDetector(str(ckpt), device=self.settings.device)
         except Exception as exc:  # an incompatible checkpoint must not stop the app
@@ -155,21 +155,25 @@ class FaceEngine:
         """stream=True: frames of one live camera; liveness/emotion are smoothed over
         recent frames (AdaptiveSecurityFusion) while exactly one face is visible."""
         t0 = time.perf_counter()
+        full_frame = Image.fromarray(rgb)
         with self._lock:
             found = self.faces(rgb)
             smooth = stream and len(found) == 1
             if stream and not smooth:
                 self.fusion.reset_session()
-            results = [self._analyze_face(box, crop, pre, smooth, log_attendance) for box, crop, pre in found]
+            results = [self._analyze_face(box, crop, pre, smooth, log_attendance, full_frame=full_frame)
+                       for box, crop, pre in found]
         h, w = rgb.shape[:2]
         return {"faces": results, "image_size": [w, h], "model": self.model.key, "threshold": self.threshold,
                 "latency_ms": round((time.perf_counter() - t0) * 1000, 1)}
 
-    def _analyze_face(self, box, crop, precropped, smooth, log_attendance):
+    def _analyze_face(self, box, crop, precropped, smooth, log_attendance, full_frame=None):
         item = {"box": list(box), "precropped": precropped, "liveness": None, "emotion": None,
-                "identity": None, "access_granted": False, "rejection_reason": None, "checked_in": False}
+                "identity": None, "access_granted": False, "rejection_reason": None, "checked_in": False,
+                "template_adapted": False}
         if self.liveness_enabled:
-            live, score = self.liveness.check_liveness(crop)
+            liveness_input = full_frame if full_frame is not None else crop
+            live, score = self.liveness.check_liveness(liveness_input)
             item["liveness"] = {"passed": live, "score": round(score, 4), "smoothed": False}
             if smooth:
                 s = self.fusion.stabilize_liveness(score, self.liveness.threshold)
@@ -184,6 +188,15 @@ class FaceEngine:
         item["access_granted"] = item["identity"]["matched"]
         if not item["access_granted"]:
             item["rejection_reason"] = "IDENTITY_UNRECOGNIZED"
+        elif smooth and item["liveness"]:
+            stored = self.gallery.get_template(item["identity"]["id"], self.model.key)
+            if stored is not None:
+                adapted = self.fusion.compute_adapted_template(
+                    stored, emb, item["liveness"]["score"], item["identity"]["similarity"]
+                )
+                if adapted is not None:
+                    self.gallery.update_template(item["identity"]["id"], self.model.key, adapted)
+                    item["template_adapted"] = True
 
         if self.emotion_enabled:
             e = self.emotion.predict_emotion(crop)

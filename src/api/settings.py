@@ -25,6 +25,7 @@ class Settings:
     # Optional group modules (used when their checkpoints exist)
     antispoof_checkpoint: Path = field(default_factory=lambda: _path(
         "FACE_ANTISPOOF_CHECKPOINT", Config.ANTISPOOF_CHECKPOINT))
+    liveness_threshold: float = field(default_factory=lambda: float(os.environ.get("FACE_LIVENESS_THRESHOLD", "0.15")))
     emotion_checkpoint: Path = field(default_factory=lambda: _path(
         "FACE_EMOTION_CHECKPOINT", Config.EMOTION_CHECKPOINT))
 

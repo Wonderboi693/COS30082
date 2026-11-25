@@ -13,8 +13,8 @@ from src.emotion.detector import EmotionDetector
 class FaceAnalysisPipeline:
     """
     Unified Facial Analysis Pipeline (Story 2.2):
-      1. Anti-Spoofing Gatekeeper (MSU-MFSD) -> Blocks presentation attacks immediately.
-      2. Biometric Feature Extractor (Triplet Loss) -> Computes 256-d L2-normalized embedding.
+      1. Anti-Spoofing Gatekeeper (MSU-MFSD) -> Evaluates full scene context to block presentation attacks.
+      2. Biometric Feature Extractor (Triplet Loss) -> Computes 256-d L2-normalized embedding from face crop.
       3. 1:N Identity Lookup / 1:1 Verification -> Matches against enrolled gallery.
       4. Emotion Recognition Agent (RAF-DB) -> Predicts expression state (< 30ms).
     """
@@ -23,7 +23,7 @@ class FaceAnalysisPipeline:
         antispoof_checkpoint: str = "checkpoints/best_antispoof.pt",
         verification_checkpoint: str = "checkpoints/best_metric.pth",
         emotion_checkpoint: str = "checkpoints/best_emotion.pt",
-        liveness_threshold: float = 0.65,
+        liveness_threshold: float = 0.18,
         verification_threshold: float = 0.3332,
         device: str = "auto"
     ):
@@ -62,18 +62,20 @@ class FaceAnalysisPipeline:
         self,
         face_crop: Union[str, Path, np.ndarray, Image.Image],
         gallery: Optional[Any] = None,
-        enrolled_embedding: Optional[np.ndarray] = None
+        enrolled_embedding: Optional[np.ndarray] = None,
+        full_frame: Optional[Union[str, Path, np.ndarray, Image.Image]] = None
     ) -> Dict[str, Any]:
         """
-        Executes the multi-modal pipeline on a cropped face frame.
-        Supports 1:N lookup via `gallery` (requires `.identify(embedding, threshold)`)
-        or 1:1 matching via `enrolled_embedding`.
+        Executes the multi-modal pipeline on a detected face.
+        Routes `full_frame` (if provided) to the MSU-MFSD liveness gatekeeper to preserve
+        scene/bezel context, while routing `face_crop` to identity extraction and emotion recognition.
         """
         t_start = time.perf_counter()
 
         # --- Stage 1: Anti-Spoofing Liveness Gatekeeper ---
         t_live_start = time.perf_counter()
-        is_live, liveness_score = self.liveness_gate.check_liveness(face_crop)
+        liveness_input = full_frame if full_frame is not None else face_crop
+        is_live, liveness_score = self.liveness_gate.check_liveness(liveness_input)
         liveness_ms = (time.perf_counter() - t_live_start) * 1000.0
 
         if not is_live:

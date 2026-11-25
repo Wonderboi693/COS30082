@@ -17,7 +17,7 @@ class AdaptiveSecurityFusion:
         window_size: int = 5,
         ema_alpha: float = 0.6,
         adaptation_lr: float = 0.05,
-        min_liveness_for_update: float = 0.90,
+        min_liveness_for_update: float = 0.22,
         min_sim_for_update: float = 0.55
     ):
         self.window_size = window_size

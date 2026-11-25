@@ -75,3 +75,4 @@ Thumbs.db
 runs/
 wandb/
 lightning_logs/
+data/gallery/
