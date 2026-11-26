@@ -1,5 +1,11 @@
+import sys
 import time
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 import torch
 from src.config import Config
 from src.emotion.detector import EmotionDetector
@@ -11,13 +17,28 @@ def test_emotion_engine():
         device="cuda" if torch.cuda.is_available() else "cpu"
     )
 
-    val_dir = Path("data/raw/emotion_data/val")
+    # Search for test samples across possible dataset paths
+    candidate_dirs = [
+        Path("data/data_emotion/val"),
+        Path("data/emotion/val")
+    ]
+    val_dir = next((d for d in candidate_dirs if d.is_dir()), None)
+    if val_dir is None:
+        print("[!] No validation dataset directory found.")
+        return
+
     sample_files = list(val_dir.rglob("*.jpg"))[:10]
     if not sample_files:
         sample_files = list(val_dir.rglob("*.png"))[:10]
 
-    # Warmup GPU
-    for _ in range(5):
+    if not sample_files:
+        print(f"[!] No images found in {val_dir}")
+        return
+
+    print(f"[*] Found validation samples in {val_dir}")
+
+    # Warmup
+    for _ in range(3):
         _ = detector.predict_emotion(sample_files[0])
 
     print("\n" + "=" * 55)
