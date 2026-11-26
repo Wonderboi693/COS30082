@@ -24,7 +24,7 @@ def evaluate_with_dataloader(checkpoint_path, test_dir, device, batch_size=64):
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
     classes = ckpt.get("classes", Config.EMOTION_CLASSES)
 
-    model = EmotionNet(num_classes=len(classes), pretrained_backbone=False)
+    model = EmotionNet(num_classes=len(classes), pretrained_backbone=False, backbone="resnet18")
     model.load_state_dict(ckpt["model_state"])
     model.to(device).eval()
 

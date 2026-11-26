@@ -16,7 +16,7 @@ class EmotionNet(nn.Module):
         num_classes: int = Config.NUM_EMOTIONS,
         pretrained_backbone: bool = False,
         freeze_backbone: bool = False,
-        backbone: str = "convnext_tiny",
+        backbone: str = "resnet18",
     ):
         super().__init__()
         self.backbone_name = backbone
@@ -55,15 +55,32 @@ class EmotionNet(nn.Module):
             in_features = 512
             self.pretrained_indices = (3, 4, 5, 6)
             self.fresh_indices = (0, 1)
+        elif backbone == "resnet34":
+            base = models.resnet34(
+                weights=models.ResNet34_Weights.DEFAULT if pretrained_backbone else None
+            )
+            self.features = nn.Sequential(
+                nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False),
+                base.bn1,
+                base.relu,
+                base.layer1,
+                base.layer2,
+                base.layer3,
+                base.layer4,
+                nn.AdaptiveAvgPool2d((1, 1)),
+            )
+            in_features = 512
+            self.pretrained_indices = (3, 4, 5, 6)
+            self.fresh_indices = (0, 1)
         else:
             raise ValueError(f"Unsupported backbone: {backbone}")
 
         self.classifier = nn.Sequential(
-            nn.Linear(in_features, 192),
-            nn.BatchNorm1d(192),
+            nn.Linear(in_features, 128),
+            nn.BatchNorm1d(128),
             nn.GELU(),
             nn.Dropout(p=0.4),
-            nn.Linear(192, num_classes),
+            nn.Linear(128, num_classes),
         )
 
         if freeze_backbone:

@@ -71,13 +71,11 @@ class Config:
     
     EMOTION_CLASSES = [
         "Angry",
-        "Confused",
         "Disgust",
         "Fear",
         "Happy",
         "Neutral",
         "Sad",
-        "Shy",
         "Surprise"
     ]
     NUM_EMOTIONS = len(EMOTION_CLASSES)

@@ -112,7 +112,7 @@ def evaluate(model, loader, criterion, device, max_batches=None):
 def run():
     global AMP_ENABLED
     parser = argparse.ArgumentParser(description="Train EmotionNet.")
-    parser.add_argument("--backbone", default="convnext_tiny", choices=["convnext_tiny", "resnet18"])
+    parser.add_argument("--backbone", default="convnext_tiny", choices=["convnext_tiny", "resnet18", "resnet34"])
     parser.add_argument("--lr", type=float, default=2e-4, help="Base learning rate")
     parser.add_argument("--batch-size", type=int, default=Config.EMOTION_BATCH_SIZE)
     parser.add_argument("--head-epochs", type=int, default=5,
