@@ -50,17 +50,7 @@ def _preprocess(image):
 
 
 def predict_emotion(image, return_all=False):
-    """
-    Predict the emotion of a single cropped face.
 
-    Args:
-        image: face crop as a numpy array (OpenCV BGR or grayscale) or PIL image.
-        return_all: if True, also return a dict of probabilities for every class.
-
-    Returns:
-        (label, confidence)            e.g. ("happy", 0.82)
-        or (label, confidence, probs)  if return_all=True
-    """
     model = _load_model()
     x = _preprocess(image)
 

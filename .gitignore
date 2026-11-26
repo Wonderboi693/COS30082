@@ -35,8 +35,7 @@ env.bak/
 venv.bak/
 
 # Datasets & raw images (Keep directory structure via .gitkeep/placeholder.txt, ignore contents)
-data/raw/
-data/raw/*
+data/data_emotion/
 !data/raw/placeholder.txt
 data/gallery/enrolled_faces/*
 !data/gallery/enrolled_faces/.gitkeep

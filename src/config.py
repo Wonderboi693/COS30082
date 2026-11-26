@@ -64,7 +64,7 @@ class Config:
     EMOTION_DIR = os.path.expanduser(
         os.environ.get(
             "COS30082_EMOTION_DIR",
-            os.path.join(PROJECT_ROOT, "data", "raw", "emotion_data")
+            os.path.join(PROJECT_ROOT, "data", "data_emotion")
         )
     )
     EMOTION_CHECKPOINT = os.path.join(CHECKPOINT_DIR, "best_emotion.pt")

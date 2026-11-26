@@ -1,0 +1,73 @@
+{
+  "tag": "teacher_r34",
+  "backbone": "resnet34",
+  "hyperparameters": {
+    "backbone": "resnet34",
+    "lr": 0.0001,
+    "batch_size": 64,
+    "head_epochs": 5,
+    "full_epochs": 10,
+    "patience": 7,
+    "pretrained_lr_mult": 0.5,
+    "pretrained": true,
+    "tag": "teacher_r34",
+    "save_path": null,
+    "results_dir": null,
+    "seed": 42,
+    "no_amp": false,
+    "max_batches": null
+  },
+  "image_size": [
+    64,
+    64
+  ],
+  "classes": [
+    "Angry",
+    "Disgust",
+    "Fear",
+    "Happy",
+    "Neutral",
+    "Sad",
+    "Surprise"
+  ],
+  "best_val_macro_f1": 0.27298975067466275,
+  "history": [
+    {
+      "stage": "warmup",
+      "epoch": 1,
+      "train_loss": 1.858993841369799,
+      "train_acc": 0.24666008364312267,
+      "val_loss": 1.7636387863475151,
+      "val_acc": 0.31026474686483974,
+      "val_macro_f1": 0.24507696582782032
+    },
+    {
+      "stage": "warmup",
+      "epoch": 2,
+      "train_loss": 1.7592910492730407,
+      "train_acc": 0.303032063197026,
+      "val_loss": 1.7145183403474624,
+      "val_acc": 0.3286886514940393,
+      "val_macro_f1": 0.25677567929669376
+    },
+    {
+      "stage": "warmup",
+      "epoch": 3,
+      "train_loss": 1.7249219051967324,
+      "train_acc": 0.32417518587360594,
+      "val_loss": 1.6861907507838396,
+      "val_acc": 0.34540950611549776,
+      "val_macro_f1": 0.27298975067466275
+    },
+    {
+      "stage": "warmup",
+      "epoch": 4,
+      "train_loss": 1.70707501332556,
+      "train_acc": 0.33253949814126393,
+      "val_loss": 1.6782518908563717,
+      "val_acc": 0.351137947050627,
+      "val_macro_f1": 0.2805447036082752
+    }
+  ],
+  "status": "running"
+}
