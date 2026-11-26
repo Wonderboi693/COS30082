@@ -10,6 +10,7 @@ data/*
 !data/placeholder.txt
 checkpoints/*.pt
 checkpoints/*.pth
+src/data/data_emotion/
 
 # macOS & Windows OS metadata
 .DS_Store
